@@ -1,0 +1,26 @@
+==========================================
+gpu_id:2
+s:14
+t:1
+max_epoch:100
+batch_size:64
+worker:4
+dset:imagenetc
+lr:0.01
+net:resnet50
+seed:2023
+bottleneck:256
+epsilon:1e-05
+layer:wn
+bn:bn
+smooth:0.1
+output:ckps/source/
+trte:val
+class_num:1000
+s_dset_path:/home/yxue/datasets
+output_dir_src:ckps/source/imagenetc/jpeg_compression
+name_src:jpeg_compression
+out_file:<_io.TextIOWrapper name='ckps/source/imagenetc/jpeg_compression/log.txt' mode='w' encoding='UTF-8'>
+
+Task: jpeg_compression, Iter:3550/3550; Accuracy = 96.93%
+Task: jpeg_compression, Iter:3550/3550; Accuracy = 100.00%

@@ -38,9 +38,21 @@ res_dict = {"resnet18":models.resnet18, "resnet34":models.resnet34, "resnet50":m
 "resnet101":models.resnet101, "resnet152":models.resnet152}
 
 class ResBase(nn.Module):
-    def __init__(self, res_name):
+    def __init__(self, res_name, path=None):
         super(ResBase, self).__init__()
-        model_resnet = res_dict[res_name](pretrained=False)
+        model_resnet = res_dict[res_name](pretrained=True)
+        
+        if path and 'DomainNet126' in path:
+            model_resnet = res_dict[res_name](num_classes=126)
+            model_resnet.load_state_dict(torch.load(path)['net'])
+        elif path and 'imagenet' in path:
+            model_resnet = nn.Sequential(
+                OrderedDict([
+                    ('model', model_resnet),
+                ]))
+            model_resnet.load_state_dict(torch.load(path)['model'], strict=False)  # 没有normalize
+            model_resnet = model_resnet.model
+        
         self.conv1 = model_resnet.conv1
         self.bn1 = model_resnet.bn1
         self.relu = model_resnet.relu
@@ -53,6 +65,7 @@ class ResBase(nn.Module):
         self.in_features = model_resnet.fc.in_features
         #self.linear=MyLinear(self.in_features)
         self.softplus=nn.Softplus()
+    
     def forward(self, x):
         x = self.conv1(x)
         x = self.bn1(x)
