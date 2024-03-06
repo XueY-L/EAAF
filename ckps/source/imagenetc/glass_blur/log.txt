@@ -1,5 +1,5 @@
 ==========================================
-gpu_id:3
+gpu_id:2
 s:4
 t:1
 max_epoch:100
@@ -22,5 +22,3 @@ output_dir_src:ckps/source/imagenetc/glass_blur
 name_src:glass_blur
 out_file:<_io.TextIOWrapper name='ckps/source/imagenetc/glass_blur/log.txt' mode='w' encoding='UTF-8'>
 
-Task: glass_blur, Iter:3550/3550; Accuracy = 97.37%
-Task: glass_blur, Iter:3550/3550; Accuracy = 100.00%

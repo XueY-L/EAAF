@@ -1,0 +1,26 @@
+==========================================
+gpu_id:3
+s:7
+t:1
+max_epoch:100
+batch_size:200
+worker:4
+dset:cifar100c
+lr:0.01
+net:resnet50
+seed:2023
+bottleneck:256
+epsilon:1e-05
+layer:wn
+bn:bn
+smooth:0.1
+output:ckps/source/
+trte:val
+class_num:100
+s_dset_path:/home/yxue/datasets
+output_dir_src:ckps/source/cifar100c/snow
+name_src:snow
+out_file:<_io.TextIOWrapper name='ckps/source/cifar100c/snow/log.txt' mode='w' encoding='UTF-8'>
+
+Task: snow, Iter:2250/2250; Accuracy = 99.80%
+Task: snow, Iter:2250/2250; Accuracy = 99.90%

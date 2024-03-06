@@ -1,5 +1,5 @@
 '''
-python msfuda_target_adaptation_evi_imagenetc.py --dset imagenetc --gpu_id 3 --output_src ckps/source/ --output ckps/adapt
+python msfuda_target_adaptation_evi_cifar100c.py --dset cifar100c --gpu_id 3 --output_src ckps/source/ --output ckps/adapt --batch_size=200
 
 '''
 import argparse
@@ -17,6 +17,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from torch.utils.data import Dataset
 from numpy import argmax, linalg as LA
 from torchvision import transforms
 import network as network
@@ -28,8 +29,9 @@ from tqdm import tqdm
 from randaug import RandAugmentMC
 from scipy.spatial.distance import cdist
 from sklearn.metrics import confusion_matrix
+from PIL import Image
 
-from robustbench.data import load_imagenetc
+from robustbench.data import load_cifar100c, load_imagenetc
 from robustbench.utils import load_model
 from robustbench.model_zoo.enums import ThreatModel
 
@@ -50,22 +52,24 @@ def lr_scheduler(optimizer, iter_num, max_iter, gamma=10, power=0.75):
     return optimizer
 
 
-def image_train(resize_size=256, crop_size=224, alexnet=False):
-    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                     std=[0.229, 0.224, 0.225])
+def image_train(resize_size=32, crop_size=32, alexnet=False):
+    # normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    normalize = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 
     return transforms.Compose([
+        transforms.ToPILImage(),
         transforms.Resize((resize_size, resize_size)),
         transforms.RandomCrop(crop_size),
         #transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         normalize
     ])
-def positive_aug(resize_size=256, crop_size=224, alexnet=False):
-    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                     std=[0.229, 0.224, 0.225])
+def positive_aug(resize_size=32, crop_size=32, alexnet=False):
+    # normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    normalize = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 
     return transforms.Compose([
+        transforms.ToPILImage(),
         transforms.Resize((resize_size, resize_size)),
         transforms.RandomCrop(crop_size),
         #transforms.RandomHorizontalFlip(),
@@ -75,11 +79,12 @@ def positive_aug(resize_size=256, crop_size=224, alexnet=False):
     ])
 
 
-def image_test(resize_size=256, crop_size=224, alexnet=False):
-    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                     std=[0.229, 0.224, 0.225])
+def image_test(resize_size=32, crop_size=32, alexnet=False):
+    # normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    normalize = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 
     return transforms.Compose([
+        transforms.ToPILImage(),
         transforms.Resize((resize_size, resize_size)),
         transforms.CenterCrop(crop_size),
         transforms.ToTensor(),
@@ -90,11 +95,46 @@ def image_test(resize_size=256, crop_size=224, alexnet=False):
 
 
 def data_load(args):
-    ## prepare data
     dset_loaders = {}
-    dset_loaders["target"] = load_imagenetc(args.batch_size, 5, args.t_dset_path, True, [args.name_tar], prepr='train', batch_idx=args.batch_idx, transform=image_train())
-    dset_loaders["target_"] = load_imagenetc(args.batch_size, 5, args.t_dset_path, False, [args.name_tar], prepr='train', batch_idx=args.batch_idx, transform=image_train(), transform1=positive_aug())
-    dset_loaders["test"] = load_imagenetc(args.batch_size*10, 5, args.t_dset_path, False, [args.name_tar], batch_idx=args.batch_idx, transform=image_test())
+    x_test, y_test = load_cifar100c(10000, 5, args.t_dset_path, True, [args.name_tar])
+    x_test, y_test = x_test[ args.batch_idx*200 : (args.batch_idx+1)*200 ], y_test[ args.batch_idx*200 : (args.batch_idx+1)*200 ]
+    print(x_test.size(), y_test.size())
+    
+    class TempSet(Dataset):
+        def __init__(self, data, labels, transform=None, transform1=None, target_transform=None):
+            super(TempSet, self).__init__()
+            self.data = data
+            self.labels = labels
+
+            self.transform = transform
+            self.target_transform = target_transform
+            self.transform1 = transform1
+
+        def __getitem__(self, index):
+            img = self.data[index]
+            target = self.labels[index]
+
+            if self.transform is not None:
+                img1 = self.transform(img)
+            if self.transform1 is not None:
+                img2=self.transform1(img)
+
+            if self.target_transform is not None:
+                target = self.target_transform(target)
+            if self.transform1 is not None:
+                return [img1,img2], target, index
+            else:
+                return img1, target, index
+
+        def __len__(self):
+            return len(self.data)
+    
+    dataset = TempSet(x_test, y_test, transform=image_train())
+    dset_loaders["target"] = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)  # 50是我自己定的，因为一个batch200个
+    dataset = TempSet(x_test, y_test, transform=image_train(), transform1=positive_aug())
+    dset_loaders["target_"] = DataLoader(dataset, batch_size=args.batch_size*3, shuffle=True)
+    dataset = TempSet(x_test, y_test, transform=image_test())
+    dset_loaders["test"] = DataLoader(dataset, batch_size=args.batch_size*3, shuffle=True)
     
     return dset_loaders
 
@@ -820,11 +860,7 @@ def initial(net,args):
 def train_target(args):
     dset_loaders = data_load(args)
     ## set base network
-    if args.net[0:3] == 'res':
-        mddn_F_list = [network.ResBase(res_name=args.net).cuda() for i in range(len(args.src))]
-      
-    elif args.net[0:3] == 'vgg':
-        mddn_F_list = [network.VGGBase(vgg_name=args.net).cuda() for i in range(len(args.src))]
+    mddn_F_list = [network.ResNextBase().cuda() for i in range(len(args.src))]  # 特征提取器
 
     mddn_C1_list = [network.feat_bottleneck(type=args.classifier, feature_dim=mddn_F_list[i].in_features,
                                          bottleneck_dim=args.bottleneck).cuda() for i in range(len(args.src))]
@@ -1015,7 +1051,7 @@ if __name__ == "__main__":
     parser.add_argument('--interval', type=int, default=1)
     parser.add_argument('--batch_size', type=int, default=64, help="batch_size")
     parser.add_argument('--worker', type=int, default=4, help="number of workers")
-    parser.add_argument('--dset', type=str, default='office-home', choices=['office31', 'office-home', 'office-caltech','domainnet', 'imagenetc'])
+    parser.add_argument('--dset', type=str, default='office-home', choices=['office31', 'office-home', 'office-caltech','domainnet', 'imagenetc', 'cifar100c'])
     parser.add_argument('--lr', type=float, default=1e-2, help="learning rate")
     parser.add_argument('--net', type=str, default='resnet50', help="vgg16, resnet50, res101")
     parser.add_argument('--seed', type=int, default=2023, help="random seed")
@@ -1039,10 +1075,10 @@ if __name__ == "__main__":
     parser.add_argument('--output_tar', type=str, default='ckps/target')
     args = parser.parse_args()
 
-    args.dset = 'imagenetc'
+    args.dset = 'cifar100c'
     names = 'gaussian_noise, shot_noise, impulse_noise, defocus_blur, glass_blur, motion_blur, zoom_blur, snow, frost, fog, brightness, contrast, elastic_transform, pixelate, jpeg_compression'.split(', ')
     print(names)
-    args.class_num = 1000
+    args.class_num = 100
 
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
     random.seed(args.seed)
@@ -1060,7 +1096,7 @@ if __name__ == "__main__":
         args.output_dir_src.append(osp.join(args.output_src, args.dset, args.src[i]))
     print(args.output_dir_src)
     
-    for k in range(13, 15):
+    for k in range(0, 8):
         args.t=k
         args.name_tar = names[args.t]
        
@@ -1080,12 +1116,11 @@ if __name__ == "__main__":
 
         args.savename = 'par_' + str(args.cls_par) + '_' + str(args.crc_par)
 
-        args.batch_size = 50
-        for i in range(5000//50):
+        for i in range(10000//args.batch_size):
             t1 = time.time()
             args.batch_idx = i
             acc = train_target(args)
-            f = open(f'ImageNetC_ggsj_target-{args.name_tar}.txt', 'a')
+            f = open(f'{args.dset}_ggsj_target-{args.name_tar}.txt', 'a')
             f.write(f'{str(acc)}\n')
             f.close()
             t2 = time.time()

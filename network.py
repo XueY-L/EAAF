@@ -15,6 +15,10 @@ import torch.nn.utils.weight_norm as weightNorm
 from collections import OrderedDict
 import torch.nn.functional as F
 from loss import ce_loss,KL,entropy_loss, entropy_loss1,total_entropy_loss,CrossEntropy1,KL_KD,CrossEntropy2
+
+from robustbench.model_zoo.enums import ThreatModel
+from robustbench.utils import load_model
+
 def calc_coeff(iter_num, high=1.0, low=0.0, alpha=10.0, max_iter=10000.0):
     return np.float(2.0 * (high - low) / (1.0 + np.exp(-alpha*iter_num / max_iter)) - (high - low) + low)
 
@@ -80,6 +84,24 @@ class ResBase(nn.Module):
        
         return x
        
+class ResNextBase(nn.Module):
+    def __init__(self, path=None):
+        super(ResNextBase, self).__init__()
+        self.base_model = load_model('Hendrycks2020AugMix_ResNeXt', './ckpt', 'cifar100', ThreatModel.corruptions).cuda()
+        if path:
+            self.base_model.load_state_dict(torch.load(path)['model'])  # 没有normalize
+        self.in_features = self.base_model.classifier.in_features
+    
+    def forward(self, x):
+        x = (x - self.base_model.mu) / self.base_model.sigma
+        x = self.base_model.conv_1_3x3(x)
+        x = F.relu(self.base_model.bn_1(x), inplace=True)
+        x = self.base_model.stage_1(x)
+        x = self.base_model.stage_2(x)
+        x = self.base_model.stage_3(x)
+        x = self.base_model.avgpool(x)
+        x = x.view(x.size(0), -1)
+        return x
 
 class feat_bottleneck(nn.Module):
     def __init__(self, feature_dim, bottleneck_dim=256, type="ori"):
