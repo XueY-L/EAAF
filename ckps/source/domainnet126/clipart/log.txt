@@ -1,0 +1,24 @@
+==========================================
+gpu_id:0
+s:0
+t:1
+max_epoch:100
+batch_size:64
+worker:4
+dset:domainnet126
+lr:0.01
+net:resnet50
+seed:2023
+bottleneck:256
+epsilon:1e-05
+layer:wn
+bn:bn
+smooth:0.1
+output:ckps/source/
+trte:val
+class_num:126
+s_dset_path:/home/yxue/datasets
+output_dir_src:ckps/source/domainnet126/clipart
+name_src:clipart
+out_file:<_io.TextIOWrapper name='ckps/source/domainnet126/clipart/log.txt' mode='w' encoding='UTF-8'>
+

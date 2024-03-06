@@ -1,5 +1,5 @@
 '''
-python msfuda_target_adaptation_evi_cifar100c.py --dset cifar100c --gpu_id 3 --output_src ckps/source/ --output ckps/adapt --batch_size=200
+python msfuda_target_adaptation_evi_cifar100c.py --dset cifar100c --gpu_id 2 --output_src ckps/source/ --output ckps/adapt --batch_size=200
 
 '''
 import argparse
@@ -1096,7 +1096,7 @@ if __name__ == "__main__":
         args.output_dir_src.append(osp.join(args.output_src, args.dset, args.src[i]))
     print(args.output_dir_src)
     
-    for k in range(0, 8):
+    for k in range(8, 15):
         args.t=k
         args.name_tar = names[args.t]
        
