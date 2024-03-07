@@ -1,5 +1,5 @@
 '''
-python msfuda_target_adaptation_evi_cifar100c.py --dset cifar100c --gpu_id 2 --output_src ckps/source/ --output ckps/adapt --batch_size=200
+python msfuda_target_adaptation_evi_cifar100c.py --dset cifar100c --gpu_id 0 --output_src ckps/source/ --output ckps/adapt --batch_size 32
 
 '''
 import argparse
@@ -52,7 +52,7 @@ def lr_scheduler(optimizer, iter_num, max_iter, gamma=10, power=0.75):
     return optimizer
 
 
-def image_train(resize_size=32, crop_size=32, alexnet=False):
+def image_train(resize_size=36, crop_size=32, alexnet=False):
     # normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     normalize = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 
@@ -64,7 +64,7 @@ def image_train(resize_size=32, crop_size=32, alexnet=False):
         transforms.ToTensor(),
         normalize
     ])
-def positive_aug(resize_size=32, crop_size=32, alexnet=False):
+def positive_aug(resize_size=36, crop_size=32, alexnet=False):
     # normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     normalize = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 
@@ -79,7 +79,7 @@ def positive_aug(resize_size=32, crop_size=32, alexnet=False):
     ])
 
 
-def image_test(resize_size=32, crop_size=32, alexnet=False):
+def image_test(resize_size=36, crop_size=32, alexnet=False):
     # normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     normalize = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 
@@ -130,11 +130,11 @@ def data_load(args):
             return len(self.data)
     
     dataset = TempSet(x_test, y_test, transform=image_train())
-    dset_loaders["target"] = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)  # 50是我自己定的，因为一个batch200个
+    dset_loaders["target"] = DataLoader(dataset, batch_size=args.batch_size, shuffle=True) 
     dataset = TempSet(x_test, y_test, transform=image_train(), transform1=positive_aug())
-    dset_loaders["target_"] = DataLoader(dataset, batch_size=args.batch_size*3, shuffle=True)
+    dset_loaders["target_"] = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
     dataset = TempSet(x_test, y_test, transform=image_test())
-    dset_loaders["test"] = DataLoader(dataset, batch_size=args.batch_size*3, shuffle=True)
+    dset_loaders["test"] = DataLoader(dataset, batch_size=args.batch_size*10, shuffle=True) 
     
     return dset_loaders
 
@@ -1096,8 +1096,8 @@ if __name__ == "__main__":
         args.output_dir_src.append(osp.join(args.output_src, args.dset, args.src[i]))
     print(args.output_dir_src)
     
-    for k in range(8, 15):
-        args.t=k
+    for k in range(0, 15):
+        args.t = k
         args.name_tar = names[args.t]
        
         args.output_dir_tar = []
@@ -1116,7 +1116,7 @@ if __name__ == "__main__":
 
         args.savename = 'par_' + str(args.cls_par) + '_' + str(args.crc_par)
 
-        for i in range(10000//args.batch_size):
+        for i in range(10000//200):
             t1 = time.time()
             args.batch_idx = i
             acc = train_target(args)

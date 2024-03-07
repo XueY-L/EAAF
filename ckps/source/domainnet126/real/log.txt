@@ -22,3 +22,5 @@ output_dir_src:ckps/source/domainnet126/real
 name_src:real
 out_file:<_io.TextIOWrapper name='ckps/source/domainnet126/real/log.txt' mode='w' encoding='UTF-8'>
 
+Task: real, Iter:48950/48950; Accuracy = 99.24%
+Task: real, Iter:48950/48950; Accuracy = 99.17%

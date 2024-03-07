@@ -1,5 +1,5 @@
 '''
-python msfuda_target_adaptation_evi_imagenetc.py --dset imagenetc --gpu_id 3 --output_src ckps/source/ --output ckps/adapt
+python msfuda_target_adaptation_evi_domainnet126.py --dset domainnet126 --gpu_id 3 --output_src ckps/source/ --output ckps/adapt --batch_size 17
 
 '''
 import argparse
@@ -32,6 +32,8 @@ from sklearn.metrics import confusion_matrix
 from robustbench.data import load_imagenetc
 from robustbench.utils import load_model
 from robustbench.model_zoo.enums import ThreatModel
+
+from domainnet126 import get_domainnet126
 
 
 def op_copy(optimizer):
@@ -92,9 +94,30 @@ def image_test(resize_size=256, crop_size=224, alexnet=False):
 def data_load(args):
     ## prepare data
     dset_loaders = {}
-    dset_loaders["target"] = load_imagenetc(args.batch_size, 5, args.t_dset_path, True, [args.name_tar], prepr='train', batch_idx=args.batch_idx, transform=image_train())
-    dset_loaders["target_"] = load_imagenetc(args.batch_size, 5, args.t_dset_path, False, [args.name_tar], prepr='train', batch_idx=args.batch_idx, transform=image_train(), transform1=positive_aug())
-    dset_loaders["test"] = load_imagenetc(args.batch_size*10, 5, args.t_dset_path, False, [args.name_tar], batch_idx=args.batch_idx, transform=image_test())
+    dset_loaders["target"] = get_domainnet126(
+        image_root='/home/yxue/datasets/DomainNet-126',
+        src_domain=args.name_tar,
+        bs=args.batch_size,
+        phase='train',
+        shuffle=True,
+        batch_idx=args.batch_idx
+    )
+    dset_loaders["target_"] = get_domainnet126(
+        image_root='/home/yxue/datasets/DomainNet-126',
+        src_domain=args.name_tar,
+        bs=args.batch_size*3,
+        phase='train',
+        shuffle=False,
+        batch_idx=args.batch_idx
+    )
+    dset_loaders["test"] = get_domainnet126(
+        image_root='/home/yxue/datasets/DomainNet-126',
+        src_domain=args.name_tar,
+        bs=args.batch_size*3,
+        phase='test',
+        shuffle=False,
+        batch_idx=args.batch_idx
+    )
     
     return dset_loaders
 
@@ -1039,10 +1062,10 @@ if __name__ == "__main__":
     parser.add_argument('--output_tar', type=str, default='ckps/target')
     args = parser.parse_args()
 
-    args.dset = 'imagenetc'
-    names = 'gaussian_noise, shot_noise, impulse_noise, defocus_blur, glass_blur, motion_blur, zoom_blur, snow, frost, fog, brightness, contrast, elastic_transform, pixelate, jpeg_compression'.split(', ')
+    args.dset = 'domainnet126'
+    names = 'clipart, painting, real, sketch'.split(', ')
     print(names)
-    args.class_num = 1000
+    args.class_num = 126
 
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
     random.seed(args.seed)
@@ -1054,14 +1077,14 @@ if __name__ == "__main__":
 
     args.t_dset_path = '/home/yxue/datasets'
 
-    args.src = ['gaussian_noise', 'glass_blur', 'snow', 'jpeg_compression']
+    args.src = ['clipart', 'painting']
     args.output_dir_src = []  # 源模型的位置
     for i in range(len(args.src)):
         args.output_dir_src.append(osp.join(args.output_src, args.dset, args.src[i]))
     print(args.output_dir_src)
     
-    for k in range(13, 15):
-        args.t=k
+    for k in [3]:
+        args.t = k
         args.name_tar = names[args.t]
        
         args.output_dir_tar = []
@@ -1080,12 +1103,18 @@ if __name__ == "__main__":
 
         args.savename = 'par_' + str(args.cls_par) + '_' + str(args.crc_par)
 
-        args.batch_size = 50
-        for i in range(5000//50):
+        LEN_SET_DomainNet126 = {
+            'clipart':18523,
+            'painting':30042,
+            'real':69622,
+            'sketch':24147,
+        }
+
+        for i in range(math.ceil(LEN_SET_DomainNet126[args.name_tar] / 50)):
             t1 = time.time()
             args.batch_idx = i
             acc = train_target(args)
-            f = open(f'ImageNetC_ggsj_target-{args.name_tar}.txt', 'a')
+            f = open(f'Domainnet126_ggsj_target-{args.name_tar}.txt', 'a')
             f.write(f'{str(acc)}\n')
             f.close()
             t2 = time.time()

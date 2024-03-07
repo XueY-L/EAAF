@@ -22,3 +22,5 @@ output_dir_src:ckps/source/domainnet126/clipart
 name_src:clipart
 out_file:<_io.TextIOWrapper name='ckps/source/domainnet126/clipart/log.txt' mode='w' encoding='UTF-8'>
 
+Task: clipart, Iter:13050/13050; Accuracy = 98.68%
+Task: clipart, Iter:13050/13050; Accuracy = 98.96%

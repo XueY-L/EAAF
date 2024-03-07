@@ -346,8 +346,7 @@ def cal_acc_test(loader, mddn_F, mddn_C1, mddn_C2,flag,args):
 
     acc = np.sum(pred_label == all_label.float().numpy()) / len(all_fea)
     log_str = 'Accuracy = {:.2f}% -> {:.2f}%'.format(accuracy * 100, acc * 100)
-  
-        
+
     args.out_file.write(log_str + '\n')
     args.out_file.flush()
     print(log_str+'\n')
