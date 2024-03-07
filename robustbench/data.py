@@ -210,7 +210,7 @@ def load_imagenetc(
             return len(self.data_paths)
     
     imagenet = TempSet(data_path[batch_idx*50 : (batch_idx+1)*50], labels[batch_idx*50 : (batch_idx+1)*50], transform=transform, transform1=transform1)
-    loader = data.DataLoader(imagenet, batch_size=n_examples, shuffle=shuffle, num_workers=32)
+    loader = data.DataLoader(imagenet, batch_size=n_examples, shuffle=shuffle, num_workers=0)  # 0是最快的，好像是因为这个程序很占cpu，worker开多了反而会变慢
         
     return loader
 
