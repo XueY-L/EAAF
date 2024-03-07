@@ -124,4 +124,4 @@ def get_domainnet126(image_root, src_domain, bs, phase, shuffle, batch_idx=None)
         pin_memory=True,
         num_workers=16,
     )
-    return loader, image_root, label_file
+    return loader

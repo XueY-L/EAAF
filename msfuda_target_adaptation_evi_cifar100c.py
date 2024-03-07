@@ -134,7 +134,7 @@ def data_load(args):
     dataset = TempSet(x_test, y_test, transform=image_train(), transform1=positive_aug())
     dset_loaders["target_"] = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
     dataset = TempSet(x_test, y_test, transform=image_test())
-    dset_loaders["test"] = DataLoader(dataset, batch_size=args.batch_size*10, shuffle=True) 
+    dset_loaders["test"] = DataLoader(dataset, batch_size=args.batch_size*10, shuffle=False) 
     
     return dset_loaders
 

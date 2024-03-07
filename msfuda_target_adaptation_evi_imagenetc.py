@@ -1,5 +1,5 @@
 '''
-python msfuda_target_adaptation_evi_imagenetc.py --dset imagenetc --gpu_id 3 --output_src ckps/source/ --output ckps/adapt
+python msfuda_target_adaptation_evi_imagenetc.py --dset imagenetc --gpu_id 2 --output_src ckps/source/ --output ckps/adapt  --batch_size 50
 
 '''
 import argparse
@@ -92,14 +92,14 @@ def image_test(resize_size=256, crop_size=224, alexnet=False):
 def data_load(args):
     ## prepare data
     dset_loaders = {}
-    dset_loaders["target"] = load_imagenetc(args.batch_size, 5, args.t_dset_path, True, [args.name_tar], prepr='train', batch_idx=args.batch_idx, transform=image_train())
-    dset_loaders["target_"] = load_imagenetc(args.batch_size, 5, args.t_dset_path, False, [args.name_tar], prepr='train', batch_idx=args.batch_idx, transform=image_train(), transform1=positive_aug())
+    dset_loaders["target"] = load_imagenetc(args.batch_size, 5, args.t_dset_path, True, [args.name_tar], batch_idx=args.batch_idx, transform=image_train())
+    dset_loaders["target_"] = load_imagenetc(args.batch_size, 5, args.t_dset_path, False, [args.name_tar], batch_idx=args.batch_idx, transform=image_train(), transform1=positive_aug())
     dset_loaders["test"] = load_imagenetc(args.batch_size*10, 5, args.t_dset_path, False, [args.name_tar], batch_idx=args.batch_idx, transform=image_test())
     
     return dset_loaders
 
 
-def sigma3(ten_sor,k=0.5):
+def sigma3(ten_sor, k=0.5):
     u=torch.mean(ten_sor)
     v=torch.std(ten_sor)
     thread_=u+k*v
@@ -275,14 +275,6 @@ def train_target_primary(args,dset_loaders,mddn_F,mddn_C1,mddn_C2,mddn_E1,mddn_E
         mddn_E1.train()
         
     
-        
-
-
-
-
-
-        
-
         if epoch<=1:
             source_pse=torch.zeros(mem_label.shape[0], len(args.src))
             source_unc=torch.zeros(mem_label.shape[0], len(args.src))
@@ -313,7 +305,7 @@ def train_target_primary(args,dset_loaders,mddn_F,mddn_C1,mddn_C2,mddn_E1,mddn_E
         
         EAU_ini=torch.log(1+(torch.sum(all_alpha)-torch.max(all_alpha,1)[0])/(torch.max(all_alpha,1)[0]))
         E_inter_pre=all_alpha/(torch.sum(all_alpha,1,keepdims=True))
-        distance = fea_bank@ fea_bank.T /3
+        distance = fea_bank@ fea_bank.T / len(args.src)
         dis_near, idx_near = torch.topk(distance, dim=-1, largest=True, k=args.r + 2)
         idx_near = idx_near[:, 1:]  # batch x K
         dis_near = dis_near[:, 1:]
@@ -454,7 +446,7 @@ def train_target_primary(args,dset_loaders,mddn_F,mddn_C1,mddn_C2,mddn_E1,mddn_E
             softmax_out = nn.Softmax(dim=1)(outputs_test)
             # output_re = softmax_out.unsqueeze(1)
 
-            print(all_inputs.size(), features_test.size(), outputs_test.size(), softmax_out.size())
+            # print(all_inputs.size(), features_test.size(), outputs_test.size(), softmax_out.size())
 
             with torch.no_grad():
                 output_f_norm = F.normalize(features_test[:features_test.shape[0]//2])
@@ -464,7 +456,7 @@ def train_target_primary(args,dset_loaders,mddn_F,mddn_C1,mddn_C2,mddn_E1,mddn_E
                 fea_bank[tar_idx][:,:256] = output_f_.detach().clone().cpu()
                 score_bank[tar_idx] = softmax_out[:features_test.shape[0]//2].detach().clone()
 
-                distance = fea_bank[tar_idx] @ fea_bank.T /3
+                distance = fea_bank[tar_idx] @ fea_bank.T / len(args.src)
                 dis_near, idx_near = torch.topk(distance, dim=-1, largest=True, k=args.r + 1)
                 idx_near = idx_near[:, 1:]  # batch x K
                 dis_near = dis_near[:, 1:]
@@ -607,76 +599,6 @@ def cal_acc(loader, mddn_F, mddn_C1, mddn_C2, flag=False):
         return aacc, acc
     else:
         return accuracy*100, mean_ent
-
-
-def obtain_label2(loader, mddn_F, mddn_C1, mddn_C2,mddn_E1, mddn_E2, args):
-    start_test = True
-    with torch.no_grad():
-        iter_test = iter(loader)
-        for _ in range(len(loader)):
-            data = iter_test.next()
-            inputs = data[0]
-            labels = data[1]
-            inputs = inputs.cuda()
-            fea = (mddn_F(inputs))
-            #pdb.set_trace()
-            evidence = mddn_E2(mddn_E1(fea))
-            feas=mddn_C1(fea)
-            
-            outputs = mddn_C2(feas)
-            if start_test:
-                all_fea = feas.float().cpu()
-                all_output = outputs.float().cpu()
-                all_evidence= evidence.float().cpu()
-                all_label = labels.float()
-                start_test = False
-            else:
-                all_fea = torch.cat((all_fea, feas.float().cpu()), 0)
-                all_output = torch.cat((all_output, outputs.float().cpu()), 0)
-                all_label = torch.cat((all_label, labels.float()), 0)
-                all_evidence = torch.cat((all_evidence, evidence.float().cpu()), 0)
-
-    all_output = nn.Softmax(dim=1)(all_output)
-    ent = torch.sum(-all_output * torch.log(all_output + args.epsilon), dim=1)
-    unknown_weight = 1 - ent / np.log(args.class_num)
-    _, predict = torch.max(all_output, 1)
-
-    accuracy = torch.sum(torch.squeeze(predict).float() == all_label).item() / float(all_label.size()[0])
-    if args.distance == 'cosine':
-        all_fea = torch.cat((all_fea, torch.ones(all_fea.size(0), 1)), 1)
-        all_fea = (all_fea.t() / torch.norm(all_fea, p=2, dim=1)).t()
-
-    all_fea = all_fea.float().cpu().numpy()
-    K = all_output.size(1)
-    aff = all_output.float().cpu().numpy()
-    initc = aff.transpose().dot(all_fea)
-    initc = initc / (1e-8 + aff.sum(axis=0)[:,None])
-    cls_count = np.eye(K)[predict].sum(axis=0)
-    labelset = np.where(cls_count>args.threshold)
-    labelset = labelset[0]
-    # print(labelset)
-
-    dd = cdist(all_fea, initc[labelset], args.distance)
-    pred_label = dd.argmin(axis=1)
-    pred_label = labelset[pred_label]
-
-    for round in range(1):
-        aff = np.eye(K)[pred_label]
-        initc = aff.transpose().dot(all_fea)
-        initc = initc / (1e-8 + aff.sum(axis=0)[:,None])
-        dd = cdist(all_fea, initc[labelset], args.distance)
-        pred_label = dd.argmin(axis=1)
-        pred_label = labelset[pred_label]
-
-    acc = np.sum(pred_label == all_label.float().numpy()) / len(all_fea)
-    log_str = 'Accuracy = {:.2f}% -> {:.2f}%'.format(accuracy * 100, acc * 100)
-  
-        
-    
-    print(log_str+'\n')
-
-    return pred_label.astype('int'),all_evidence,all_label
-
     
 
 def obtain_label(loader, mddn_F, mddn_C1, mddn_C2,mddn_E1, mddn_E2,primary_idx,all_o_list, all_f_list,all_e_list,args):
@@ -724,7 +646,7 @@ def obtain_label(loader, mddn_F, mddn_C1, mddn_C2,mddn_E1, mddn_E2,primary_idx,a
         all_fea=all_f_list[0]
     else:
         all_fea=all_f_list[0]*0.5
-    for i in range(1, 3):
+    for i in range(1, len(args.src)):
         if i==primary_idx:
             all_fea=torch.cat((all_fea,all_f_list[i]),1)
         else:
@@ -757,7 +679,7 @@ def obtain_label(loader, mddn_F, mddn_C1, mddn_C2,mddn_E1, mddn_E2,primary_idx,a
         dd = cdist(all_fea, initc[labelset], args.distance)
 
         pred_label = np.argsort(dd)[:,0]
-        pred_label2=np.argsort(dd)[:,1]
+        pred_label2 = np.argsort(dd)[:,1]
         pred_label = labelset[pred_label]
         
         pred_label2 = labelset[pred_label2]
@@ -839,10 +761,6 @@ def train_target(args):
     #netQ = network.MyLinear(256,256).cuda()
     net=network.MDDN(mddn_F_list,mddn_C1_list,mddn_C2_list,mddn_E1_list,mddn_E2_list,args.class_num,len(args.src), args.max_epoch * len(dset_loaders["target"]) // args.interval)
 
-   
-    
-
-
     net,optimizer=initial(net,args)
     
     out_list,evi_list,pse_list,all_f_list,all_label=pre_infer(dset_loaders['test'],net)
@@ -914,8 +832,6 @@ def pre_infer(loader, net):
     prev=dict()
     #consistency=[]
     for i in range(net.source):
-       
-
         prev[i], pred[i]= torch.max(all_o_list[i], 1)
         #consistency.append(torch.sum(torch.max(all_evi_list[i],1)[0] ))
         accuracy = torch.sum(torch.squeeze(pred[i]).float() == all_label).item() / float(all_label.size()[0])
@@ -939,14 +855,6 @@ def pre_infer(loader, net):
         all_f_list[i]=all_f_list[i].float().cpu()#.numpy()
     return  all_o_list,all_evi_list,all_pse_list,all_f_list,all_label
 
-   
-    
- 
-    
-    
-    
-   
-  
 
 def cluster(all_output,all_features,all_label):
     
@@ -977,25 +885,6 @@ def cluster(all_output,all_features,all_label):
         pred_label = dd_fuse.argmin(axis=1)
 
     return pred_label,dd,initc
-
-
-def interleave_offsets(batch, nu):
-    groups = [batch // (nu + 1)] * (nu + 1)
-    for x in range(batch - sum(groups)):
-        groups[-x - 1] += 1
-    offsets = [0]
-    for g in groups:
-        offsets.append(offsets[-1] + g)
-    assert offsets[-1] == batch
-    return offsets
-
-def interleave(xy, batch):
-    nu = len(xy) - 1
-    offsets = interleave_offsets(batch, nu)
-    xy = [[v[offsets[p]:offsets[p + 1]] for p in range(nu + 1)] for v in xy]
-    for i in range(1, nu + 1):
-        xy[0][i], xy[i][i] = xy[i][i], xy[0][i]
-    return [torch.cat(v, dim=0) for v in xy]
   
 
 
@@ -1019,7 +908,7 @@ if __name__ == "__main__":
     parser.add_argument('--lr', type=float, default=1e-2, help="learning rate")
     parser.add_argument('--net', type=str, default='resnet50', help="vgg16, resnet50, res101")
     parser.add_argument('--seed', type=int, default=2023, help="random seed")
-    parser.add_argument("--r", type=int, default=3)
+    parser.add_argument("--r", type=int, default=3)  # 不改了，是top3近的
     parser.add_argument('--gent', type=bool, default=True)
     parser.add_argument('--ent', type=bool, default=True)
     parser.add_argument('--threshold', type=int, default=0)
@@ -1060,8 +949,8 @@ if __name__ == "__main__":
         args.output_dir_src.append(osp.join(args.output_src, args.dset, args.src[i]))
     print(args.output_dir_src)
     
-    for k in range(13, 15):
-        args.t=k
+    for k in range(6, 9):
+        args.t = k
         args.name_tar = names[args.t]
        
         args.output_dir_tar = []
@@ -1080,12 +969,11 @@ if __name__ == "__main__":
 
         args.savename = 'par_' + str(args.cls_par) + '_' + str(args.crc_par)
 
-        args.batch_size = 50
         for i in range(5000//50):
             t1 = time.time()
             args.batch_idx = i
             acc = train_target(args)
-            f = open(f'ImageNetC_ggsj_target-{args.name_tar}.txt', 'a')
+            f = open(f'ImageNetC_ggsj_target-{args.name_tar}_bs{args.batch_size}.txt', 'a')
             f.write(f'{str(acc)}\n')
             f.close()
             t2 = time.time()

@@ -1,6 +1,6 @@
 '''
-python msfuda_target_adaptation_evi_domainnet126.py --dset domainnet126 --gpu_id 3 --output_src ckps/source/ --output ckps/adapt --batch_size 17
-
+python msfuda_target_adaptation_evi_domainnet126.py --dset domainnet126 --gpu_id 0 --output_src ckps/source/ --output ckps/adapt --batch_size 64
+报错，不知道为啥
 '''
 import argparse
 from concurrent.futures import thread
@@ -21,7 +21,7 @@ from numpy import argmax, linalg as LA
 from torchvision import transforms
 import network as network
 import loss
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 from data_list import ImageList, ImageList_idx,Listset,Listset3,ImageList_aug
 import random, pdb, math, copy
 from tqdm import tqdm
@@ -34,6 +34,8 @@ from robustbench.utils import load_model
 from robustbench.model_zoo.enums import ThreatModel
 
 from domainnet126 import get_domainnet126
+
+from PIL import Image
 
 
 def op_copy(optimizer):
@@ -63,6 +65,7 @@ def image_train(resize_size=256, crop_size=224, alexnet=False):
         transforms.ToTensor(),
         normalize
     ])
+
 def positive_aug(resize_size=256, crop_size=224, alexnet=False):
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
@@ -76,7 +79,6 @@ def positive_aug(resize_size=256, crop_size=224, alexnet=False):
         normalize
     ])
 
-
 def image_test(resize_size=256, crop_size=224, alexnet=False):
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
@@ -88,37 +90,77 @@ def image_test(resize_size=256, crop_size=224, alexnet=False):
         normalize
     ])
 
-
-
-
 def data_load(args):
     ## prepare data
+
+    class TempSet(Dataset):
+        def __init__(
+            self,
+            image_root: str,
+            label_file: str,
+            transform=None, transform1=None,
+            batch_idx=None,
+            pseudo_item_list=None,
+        ):
+            self.image_root = image_root
+            self._label_file = label_file
+            self.transform = transform
+            self.transform1=transform1
+
+            assert (
+                label_file or pseudo_item_list
+            ), f"Must provide either label file or pseudo labels."
+            self.item_list = (
+                self.build_index(label_file) if label_file else pseudo_item_list
+            )
+            if batch_idx != None: 
+                self.item_list = self.item_list[batch_idx*50 : (batch_idx+1)*50]
+
+        def build_index(self, label_file):
+            # read in items; each item takes one line
+            with open(label_file, "r") as fd:
+                lines = fd.readlines()
+            lines = [line.strip() for line in lines if line]
+
+            item_list = []
+            for item in lines:
+                img_file, label = item.split()
+                img_path = os.path.join(self.image_root, img_file)
+                label = int(label)
+                item_list.append((img_path, label, img_file))
+
+            return item_list
+
+        def __getitem__(self, idx):
+            img_path, label, _ = self.item_list[idx]
+            img = Image.open(img_path)
+            img = img.convert("RGB")
+
+            if self.transform is not None:
+                img1 = self.transform(img)
+            if self.transform1 is not None:
+                img2 = self.transform1(img)
+
+            if self.transform1 is not None:
+                return [img1,img2], label, idx
+            else:
+                return img1, label, idx
+
+        def __len__(self):
+            return len(self.item_list)
+
+    dsets = {}
     dset_loaders = {}
-    dset_loaders["target"] = get_domainnet126(
-        image_root='/home/yxue/datasets/DomainNet-126',
-        src_domain=args.name_tar,
-        bs=args.batch_size,
-        phase='train',
-        shuffle=True,
-        batch_idx=args.batch_idx
-    )
-    dset_loaders["target_"] = get_domainnet126(
-        image_root='/home/yxue/datasets/DomainNet-126',
-        src_domain=args.name_tar,
-        bs=args.batch_size*3,
-        phase='train',
-        shuffle=False,
-        batch_idx=args.batch_idx
-    )
-    dset_loaders["test"] = get_domainnet126(
-        image_root='/home/yxue/datasets/DomainNet-126',
-        src_domain=args.name_tar,
-        bs=args.batch_size*3,
-        phase='test',
-        shuffle=False,
-        batch_idx=args.batch_idx
-    )
-    
+    image_root = '/home/yxue/datasets/DomainNet-126'
+    label_file = os.path.join(image_root, f"{args.name_tar}_list.txt")
+
+    dsets["target"] = TempSet(image_root, label_file, transform=image_train())
+    dset_loaders["target"] = DataLoader(dsets["target"], batch_size=args.batch_size, shuffle=True, pin_memory=True, drop_last=False, num_workers=16)
+    dsets['target_'] = TempSet(image_root, label_file,  transform=image_train(),transform1=positive_aug())
+    dset_loaders['target_'] = DataLoader(dsets['target_'], batch_size=args.batch_size, shuffle=True, pin_memory=True, drop_last=False, num_workers=16)
+    dsets["test"] = TempSet(image_root, label_file, transform=image_test())
+    dset_loaders["test"] = DataLoader(dsets["test"], batch_size=args.batch_size * 10, shuffle=False, pin_memory=True, drop_last=False, num_workers=16)
+
     return dset_loaders
 
 
@@ -130,28 +172,6 @@ def sigma3(ten_sor,k=0.5):
     h_id=torch.nonzero(ten_sor>thread_).squeeze().cpu().numpy()
     return l_id,h_id
 
-
-def build_data_source(label):
-    data_source=[]
-    for i in range(len(label)):
-        data_source.append([i,label[i].item()])
-
-    return data_source
-def mixup(input,label):
-    alpha = 0.75
-    lam = np.random.beta(alpha, alpha)
-    index = torch.randperm(input.size()[0]).cuda()
-    mixed_input = lam *input + (1 - lam) * input[index, :]
-    label = (lam * label + (1 - lam) * label[index, :]).detach()
-    return mixed_input,label
-
-def get_list(a,b):
-    
-    if a.shape != () and b.shape !=  ():
-        tmp = [val for val in a if val in b] 
-    else: 
-        tmp=[]
-    return tmp
 
 def train_target_primary(args,dset_loaders,mddn_F,mddn_C1,mddn_C2,mddn_E1,mddn_E2,primary_idx,unc_list,evi_list,out_list,pse_list,fea_list):
     def DS_Combin_two(alpha1, alpha2,):
@@ -297,14 +317,6 @@ def train_target_primary(args,dset_loaders,mddn_F,mddn_C1,mddn_C2,mddn_E1,mddn_E
         mddn_C1.train()
         mddn_E1.train()
         
-    
-        
-
-
-
-
-
-        
 
         if epoch<=1:
             source_pse=torch.zeros(mem_label.shape[0], len(args.src))
@@ -336,7 +348,7 @@ def train_target_primary(args,dset_loaders,mddn_F,mddn_C1,mddn_C2,mddn_E1,mddn_E
         
         EAU_ini=torch.log(1+(torch.sum(all_alpha)-torch.max(all_alpha,1)[0])/(torch.max(all_alpha,1)[0]))
         E_inter_pre=all_alpha/(torch.sum(all_alpha,1,keepdims=True))
-        distance = fea_bank@ fea_bank.T /3
+        distance = fea_bank@ fea_bank.T / len(args.src)
         dis_near, idx_near = torch.topk(distance, dim=-1, largest=True, k=args.r + 2)
         idx_near = idx_near[:, 1:]  # batch x K
         dis_near = dis_near[:, 1:]
@@ -477,7 +489,7 @@ def train_target_primary(args,dset_loaders,mddn_F,mddn_C1,mddn_C2,mddn_E1,mddn_E
             softmax_out = nn.Softmax(dim=1)(outputs_test)
             # output_re = softmax_out.unsqueeze(1)
 
-            print(all_inputs.size(), features_test.size(), outputs_test.size(), softmax_out.size())
+            # print(all_inputs.size(), features_test.size(), outputs_test.size(), softmax_out.size())
 
             with torch.no_grad():
                 output_f_norm = F.normalize(features_test[:features_test.shape[0]//2])
@@ -487,7 +499,7 @@ def train_target_primary(args,dset_loaders,mddn_F,mddn_C1,mddn_C2,mddn_E1,mddn_E
                 fea_bank[tar_idx][:,:256] = output_f_.detach().clone().cpu()
                 score_bank[tar_idx] = softmax_out[:features_test.shape[0]//2].detach().clone()
 
-                distance = fea_bank[tar_idx] @ fea_bank.T /3
+                distance = fea_bank[tar_idx] @ fea_bank.T / len(args.src)
                 dis_near, idx_near = torch.topk(distance, dim=-1, largest=True, k=args.r + 1)
                 idx_near = idx_near[:, 1:]  # batch x K
                 dis_near = dis_near[:, 1:]
@@ -630,76 +642,6 @@ def cal_acc(loader, mddn_F, mddn_C1, mddn_C2, flag=False):
         return aacc, acc
     else:
         return accuracy*100, mean_ent
-
-
-def obtain_label2(loader, mddn_F, mddn_C1, mddn_C2,mddn_E1, mddn_E2, args):
-    start_test = True
-    with torch.no_grad():
-        iter_test = iter(loader)
-        for _ in range(len(loader)):
-            data = iter_test.next()
-            inputs = data[0]
-            labels = data[1]
-            inputs = inputs.cuda()
-            fea = (mddn_F(inputs))
-            #pdb.set_trace()
-            evidence = mddn_E2(mddn_E1(fea))
-            feas=mddn_C1(fea)
-            
-            outputs = mddn_C2(feas)
-            if start_test:
-                all_fea = feas.float().cpu()
-                all_output = outputs.float().cpu()
-                all_evidence= evidence.float().cpu()
-                all_label = labels.float()
-                start_test = False
-            else:
-                all_fea = torch.cat((all_fea, feas.float().cpu()), 0)
-                all_output = torch.cat((all_output, outputs.float().cpu()), 0)
-                all_label = torch.cat((all_label, labels.float()), 0)
-                all_evidence = torch.cat((all_evidence, evidence.float().cpu()), 0)
-
-    all_output = nn.Softmax(dim=1)(all_output)
-    ent = torch.sum(-all_output * torch.log(all_output + args.epsilon), dim=1)
-    unknown_weight = 1 - ent / np.log(args.class_num)
-    _, predict = torch.max(all_output, 1)
-
-    accuracy = torch.sum(torch.squeeze(predict).float() == all_label).item() / float(all_label.size()[0])
-    if args.distance == 'cosine':
-        all_fea = torch.cat((all_fea, torch.ones(all_fea.size(0), 1)), 1)
-        all_fea = (all_fea.t() / torch.norm(all_fea, p=2, dim=1)).t()
-
-    all_fea = all_fea.float().cpu().numpy()
-    K = all_output.size(1)
-    aff = all_output.float().cpu().numpy()
-    initc = aff.transpose().dot(all_fea)
-    initc = initc / (1e-8 + aff.sum(axis=0)[:,None])
-    cls_count = np.eye(K)[predict].sum(axis=0)
-    labelset = np.where(cls_count>args.threshold)
-    labelset = labelset[0]
-    # print(labelset)
-
-    dd = cdist(all_fea, initc[labelset], args.distance)
-    pred_label = dd.argmin(axis=1)
-    pred_label = labelset[pred_label]
-
-    for round in range(1):
-        aff = np.eye(K)[pred_label]
-        initc = aff.transpose().dot(all_fea)
-        initc = initc / (1e-8 + aff.sum(axis=0)[:,None])
-        dd = cdist(all_fea, initc[labelset], args.distance)
-        pred_label = dd.argmin(axis=1)
-        pred_label = labelset[pred_label]
-
-    acc = np.sum(pred_label == all_label.float().numpy()) / len(all_fea)
-    log_str = 'Accuracy = {:.2f}% -> {:.2f}%'.format(accuracy * 100, acc * 100)
-  
-        
-    
-    print(log_str+'\n')
-
-    return pred_label.astype('int'),all_evidence,all_label
-
     
 
 def obtain_label(loader, mddn_F, mddn_C1, mddn_C2,mddn_E1, mddn_E2,primary_idx,all_o_list, all_f_list,all_e_list,args):
@@ -747,7 +689,7 @@ def obtain_label(loader, mddn_F, mddn_C1, mddn_C2,mddn_E1, mddn_E2,primary_idx,a
         all_fea=all_f_list[0]
     else:
         all_fea=all_f_list[0]*0.5
-    for i in range(1, 3):
+    for i in range(1, len(args.src)):
         if i==primary_idx:
             all_fea=torch.cat((all_fea,all_f_list[i]),1)
         else:
@@ -759,7 +701,7 @@ def obtain_label(loader, mddn_F, mddn_C1, mddn_C2,mddn_E1, mddn_E2,primary_idx,a
    
 
     all_fea = all_fea.float().cpu().numpy()
-    all_fea=all_fea
+    all_fea = all_fea
     K = all_output.size(1)
     aff = all_output.float().cpu().numpy()
     initc = aff.transpose().dot(all_fea)
@@ -778,12 +720,16 @@ def obtain_label(loader, mddn_F, mddn_C1, mddn_C2,mddn_E1, mddn_E2,primary_idx,a
         initc = aff.transpose().dot(all_fea)
         initc = initc / (1e-8 + aff.sum(axis=0)[:,None])
         dd = cdist(all_fea, initc[labelset], args.distance)
+        print(all_fea.size())
+        print(initc[labelset].shape)
+        print(np.argsort(dd).shape)
+        print(np.argsort(dd))
 
         pred_label = np.argsort(dd)[:,0]
-        pred_label2=np.argsort(dd)[:,1]
+        pred_label2 = np.argsort(dd)[:,1]
         pred_label = labelset[pred_label]
-        
         pred_label2 = labelset[pred_label2]
+
     acc = np.sum(pred_label2 == all_label.float().numpy()) / len(all_fea)
     log_str = 'Accuracy2 = {:.2f}%'.format( acc * 100)
     print(log_str+'\n')
@@ -795,9 +741,6 @@ def obtain_label(loader, mddn_F, mddn_C1, mddn_C2,mddn_E1, mddn_E2,primary_idx,a
     print(log_str+'\n')
 
     return pred_label.astype('int'),pred_label2.astype('int'),all_evidence,all_label
-
-    
-
 
 
 def initial(net,args):
@@ -862,11 +805,7 @@ def train_target(args):
     #netQ = network.MyLinear(256,256).cuda()
     net=network.MDDN(mddn_F_list,mddn_C1_list,mddn_C2_list,mddn_E1_list,mddn_E2_list,args.class_num,len(args.src), args.max_epoch * len(dset_loaders["target"]) // args.interval)
 
-   
-    
-
-
-    net,optimizer=initial(net,args)
+    net, optimizer = initial(net,args)
     
     out_list,evi_list,pse_list,all_f_list,all_label=pre_infer(dset_loaders['test'],net)
     pred=dict()
@@ -874,7 +813,6 @@ def train_target(args):
     unc=dict()
     prev=dict()
     for i in range(net.source):
-    
         prev[i], pred[i]= torch.max(out_list[i], 1)
         unc[i]=args.class_num/(torch.max(evi_list[i]+1,1)[0])
         consistency.append(torch.sum(torch.max(evi_list[i],1)[0] ))
@@ -886,7 +824,6 @@ def train_target(args):
     
     return acc
                         
-
 
 def pre_infer(loader, net):
     start_test = True
@@ -937,8 +874,6 @@ def pre_infer(loader, net):
     prev=dict()
     #consistency=[]
     for i in range(net.source):
-       
-
         prev[i], pred[i]= torch.max(all_o_list[i], 1)
         #consistency.append(torch.sum(torch.max(all_evi_list[i],1)[0] ))
         accuracy = torch.sum(torch.squeeze(pred[i]).float() == all_label).item() / float(all_label.size()[0])
@@ -962,15 +897,7 @@ def pre_infer(loader, net):
         all_f_list[i]=all_f_list[i].float().cpu()#.numpy()
     return  all_o_list,all_evi_list,all_pse_list,all_f_list,all_label
 
-   
-    
- 
-    
-    
-    
-   
   
-
 def cluster(all_output,all_features,all_label):
     
     
@@ -1002,32 +929,6 @@ def cluster(all_output,all_features,all_label):
     return pred_label,dd,initc
 
 
-def interleave_offsets(batch, nu):
-    groups = [batch // (nu + 1)] * (nu + 1)
-    for x in range(batch - sum(groups)):
-        groups[-x - 1] += 1
-    offsets = [0]
-    for g in groups:
-        offsets.append(offsets[-1] + g)
-    assert offsets[-1] == batch
-    return offsets
-
-def interleave(xy, batch):
-    nu = len(xy) - 1
-    offsets = interleave_offsets(batch, nu)
-    xy = [[v[offsets[p]:offsets[p + 1]] for p in range(nu + 1)] for v in xy]
-    for i in range(1, nu + 1):
-        xy[0][i], xy[i][i] = xy[i][i], xy[0][i]
-    return [torch.cat(v, dim=0) for v in xy]
-  
-
-
-def print_args(args):
-    s = "==========================================\n"
-    for arg, content in args.__dict__.items():
-        s += "{}:{}\n".format(arg, content)
-    return s
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='CAiDA')
@@ -1038,7 +939,7 @@ if __name__ == "__main__":
     parser.add_argument('--interval', type=int, default=1)
     parser.add_argument('--batch_size', type=int, default=64, help="batch_size")
     parser.add_argument('--worker', type=int, default=4, help="number of workers")
-    parser.add_argument('--dset', type=str, default='office-home', choices=['office31', 'office-home', 'office-caltech','domainnet', 'imagenetc'])
+    parser.add_argument('--dset', type=str, default='office-home', choices=['office31', 'office-home', 'office-caltech','domainnet', 'imagenetc', 'domainnet126'])
     parser.add_argument('--lr', type=float, default=1e-2, help="learning rate")
     parser.add_argument('--net', type=str, default='resnet50', help="vgg16, resnet50, res101")
     parser.add_argument('--seed', type=int, default=2023, help="random seed")
@@ -1077,13 +978,13 @@ if __name__ == "__main__":
 
     args.t_dset_path = '/home/yxue/datasets'
 
-    args.src = ['clipart', 'painting']
+    args.src = ['clipart', 'real']
     args.output_dir_src = []  # 源模型的位置
     for i in range(len(args.src)):
         args.output_dir_src.append(osp.join(args.output_src, args.dset, args.src[i]))
     print(args.output_dir_src)
     
-    for k in [3]:
+    for k in [1, 3]:
         args.t = k
         args.name_tar = names[args.t]
        
@@ -1114,7 +1015,7 @@ if __name__ == "__main__":
             t1 = time.time()
             args.batch_idx = i
             acc = train_target(args)
-            f = open(f'Domainnet126_ggsj_target-{args.name_tar}.txt', 'a')
+            f = open(f'DomainNet126-continual_{args.src}_target-{args.name_tar}.txt', 'a')
             f.write(f'{str(acc)}\n')
             f.close()
             t2 = time.time()

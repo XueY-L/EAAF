@@ -182,13 +182,12 @@ def load_imagenetc(
     
     # adapt用
     class TempSet(Dataset):
-        def __init__(self, data_paths, data_labels, transform=None, transform1=None, target_transform=None):
+        def __init__(self, data_paths, data_labels, transform=None, transform1=None):
             super(TempSet, self).__init__()
             self.data_paths = data_paths
             self.data_labels = data_labels
 
             self.transform = transform
-            self.target_transform = target_transform
             self.transform1 = transform1
 
         def __getitem__(self, index):
@@ -197,16 +196,13 @@ def load_imagenetc(
 
             if not img.mode == "RGB":
                 img = img.convert("RGB")
-            label = self.data_labels[index]
             if self.transform is not None:
                 img1 = self.transform(img)
             if self.transform1 is not None:
                 img2=self.transform1(img)
 
-            if self.target_transform is not None:
-                target = self.target_transform(target)
             if self.transform1 is not None:
-                return [img1,img2], target, index
+                return [img1, img2], target, index
             else:
                 return img1, target, index
 
