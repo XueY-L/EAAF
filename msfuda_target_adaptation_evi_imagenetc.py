@@ -949,7 +949,7 @@ if __name__ == "__main__":
         args.output_dir_src.append(osp.join(args.output_src, args.dset, args.src[i]))
     print(args.output_dir_src)
     
-    for k in range(12, 15):
+    for k in range(7, 15):
         args.t = k
         args.name_tar = names[args.t]
        
@@ -973,7 +973,7 @@ if __name__ == "__main__":
             t1 = time.time()
             args.batch_idx = i
             acc = train_target(args)
-            f = open(f'ImageNetC_ggsj_target-{args.name_tar}_bs{args.batch_size}.txt', 'a')
+            f = open(f'results/imagenetc_bs{args.batch_size}/ImageNetC_ggsj_target-{args.name_tar}_bs{args.batch_size}.txt', 'a')
             f.write(f'{str(acc)}\n')
             f.close()
             t2 = time.time()

@@ -1,5 +1,5 @@
 '''
-python msfuda_target_adaptation_evi_domainnet126.py --dset domainnet126 --gpu_id 0 --output_src ckps/source/ --output ckps/adapt --batch_size 64
+python msfuda_target_adaptation_evi_domainnet126.py --dset domainnet126 --gpu_id 3 --output_src ckps/source/ --output ckps/adapt --batch_size 50
 报错，不知道为啥
 '''
 import argparse
@@ -155,11 +155,11 @@ def data_load(args):
     label_file = os.path.join(image_root, f"{args.name_tar}_list.txt")
 
     dsets["target"] = TempSet(image_root, label_file, transform=image_train())
-    dset_loaders["target"] = DataLoader(dsets["target"], batch_size=args.batch_size, shuffle=True, pin_memory=True, drop_last=False, num_workers=16)
-    dsets['target_'] = TempSet(image_root, label_file,  transform=image_train(),transform1=positive_aug())
-    dset_loaders['target_'] = DataLoader(dsets['target_'], batch_size=args.batch_size, shuffle=True, pin_memory=True, drop_last=False, num_workers=16)
+    dset_loaders["target"] = DataLoader(dsets["target"], batch_size=args.batch_size, shuffle=True, pin_memory=True, drop_last=False, num_workers=0)
+    dsets['target_'] = TempSet(image_root, label_file,  transform=image_train(), transform1=positive_aug())
+    dset_loaders['target_'] = DataLoader(dsets['target_'], batch_size=args.batch_size, shuffle=True, pin_memory=True, drop_last=False, num_workers=0)
     dsets["test"] = TempSet(image_root, label_file, transform=image_test())
-    dset_loaders["test"] = DataLoader(dsets["test"], batch_size=args.batch_size * 10, shuffle=False, pin_memory=True, drop_last=False, num_workers=16)
+    dset_loaders["test"] = DataLoader(dsets["test"], batch_size=args.batch_size * 10, shuffle=False, pin_memory=True, drop_last=False, num_workers=0)
 
     return dset_loaders
 
@@ -720,10 +720,10 @@ def obtain_label(loader, mddn_F, mddn_C1, mddn_C2,mddn_E1, mddn_E2,primary_idx,a
         initc = aff.transpose().dot(all_fea)
         initc = initc / (1e-8 + aff.sum(axis=0)[:,None])
         dd = cdist(all_fea, initc[labelset], args.distance)
-        print(all_fea.size())
-        print(initc[labelset].shape)
-        print(np.argsort(dd).shape)
-        print(np.argsort(dd))
+        # print(all_fea.size())
+        # print(initc[labelset].shape)
+        # print(np.argsort(dd).shape)
+        # print(np.argsort(dd))
 
         pred_label = np.argsort(dd)[:,0]
         pred_label2 = np.argsort(dd)[:,1]
@@ -807,7 +807,7 @@ def train_target(args):
 
     net, optimizer = initial(net,args)
     
-    out_list,evi_list,pse_list,all_f_list,all_label=pre_infer(dset_loaders['test'],net)
+    out_list,evi_list,pse_list,all_f_list,all_label = pre_infer(dset_loaders['test'],net)
     pred=dict()
     consistency=[]
     unc=dict()
@@ -836,7 +836,7 @@ def pre_infer(loader, net):
 
             inputs = inputs.cuda()
 
-            evi_list,out_list,f_list=net.forward(inputs,'test',-1)
+            evi_list, out_list, f_list = net.forward(inputs,'test',-1)
             features=f_list[0]
 
             for i in range(1,net.source):
@@ -984,12 +984,12 @@ if __name__ == "__main__":
         args.output_dir_src.append(osp.join(args.output_src, args.dset, args.src[i]))
     print(args.output_dir_src)
     
-    for k in [1, 3]:
+    for k in [1]:
         args.t = k
         args.name_tar = names[args.t]
        
         args.output_dir_tar = []
-        args.output_dir_src= []
+        args.output_dir_src = []
         for i in range(len(args.src)):
             args.output_dir_tar.append(osp.join(args.output_tar, args.dset, args.src[i]+names[args.t]))
             args.output_dir_src.append(osp.join(args.output_src, args.dset, args.src[i]))
