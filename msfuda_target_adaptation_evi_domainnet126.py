@@ -1,6 +1,5 @@
 '''
-python msfuda_target_adaptation_evi_domainnet126.py --dset domainnet126 --gpu_id 3 --output_src ckps/source/ --output ckps/adapt --batch_size 50
-报错，不知道为啥
+python msfuda_target_adaptation_evi_domainnet126.py --dset domainnet126 --gpu_id 0 --output_src ckps/source/ --output ckps/adapt --batch_size 50 --worker 0
 '''
 import argparse
 from concurrent.futures import thread
@@ -43,7 +42,6 @@ def op_copy(optimizer):
         param_group['lr0'] = param_group['lr']
     return optimizer
 
-
 def lr_scheduler(optimizer, iter_num, max_iter, gamma=10, power=0.75):
     decay = (1 + gamma * iter_num / max_iter) ** (-power)
     for param_group in optimizer.param_groups:
@@ -52,7 +50,6 @@ def lr_scheduler(optimizer, iter_num, max_iter, gamma=10, power=0.75):
         param_group['momentum'] = 0.9
         param_group['nesterov'] = True
     return optimizer
-
 
 def image_train(resize_size=256, crop_size=224, alexnet=False):
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
@@ -142,7 +139,7 @@ def data_load(args):
                 img2 = self.transform1(img)
 
             if self.transform1 is not None:
-                return [img1,img2], label, idx
+                return [img1, img2], label, idx
             else:
                 return img1, label, idx
 
@@ -154,12 +151,12 @@ def data_load(args):
     image_root = '/home/yxue/datasets/DomainNet-126'
     label_file = os.path.join(image_root, f"{args.name_tar}_list.txt")
 
-    dsets["target"] = TempSet(image_root, label_file, transform=image_train())
-    dset_loaders["target"] = DataLoader(dsets["target"], batch_size=args.batch_size, shuffle=True, pin_memory=True, drop_last=False, num_workers=0)
-    dsets['target_'] = TempSet(image_root, label_file,  transform=image_train(), transform1=positive_aug())
-    dset_loaders['target_'] = DataLoader(dsets['target_'], batch_size=args.batch_size, shuffle=True, pin_memory=True, drop_last=False, num_workers=0)
-    dsets["test"] = TempSet(image_root, label_file, transform=image_test())
-    dset_loaders["test"] = DataLoader(dsets["test"], batch_size=args.batch_size * 10, shuffle=False, pin_memory=True, drop_last=False, num_workers=0)
+    dsets["target"] = TempSet(image_root, label_file, transform=image_train(), batch_idx=args.batch_idx)
+    dset_loaders["target"] = DataLoader(dsets["target"], batch_size=args.batch_size, shuffle=True, pin_memory=True, drop_last=False, num_workers=args.worker)
+    dsets['target_'] = TempSet(image_root, label_file,  transform=image_train(), transform1=positive_aug(), batch_idx=args.batch_idx)
+    dset_loaders['target_'] = DataLoader(dsets['target_'], batch_size=args.batch_size, shuffle=True, pin_memory=True, drop_last=False, num_workers=args.worker)
+    dsets["test"] = TempSet(image_root, label_file, transform=image_test(), batch_idx=args.batch_idx)
+    dset_loaders["test"] = DataLoader(dsets["test"], batch_size=args.batch_size * 10, shuffle=False, pin_memory=True, drop_last=False, num_workers=args.worker)
 
     return dset_loaders
 
@@ -978,13 +975,13 @@ if __name__ == "__main__":
 
     args.t_dset_path = '/home/yxue/datasets'
 
-    args.src = ['clipart', 'real']
+    args.src = ['real', 'sketch']
     args.output_dir_src = []  # 源模型的位置
     for i in range(len(args.src)):
         args.output_dir_src.append(osp.join(args.output_src, args.dset, args.src[i]))
     print(args.output_dir_src)
     
-    for k in [1]:
+    for k in [0, 1]:
         args.t = k
         args.name_tar = names[args.t]
        
@@ -1015,7 +1012,7 @@ if __name__ == "__main__":
             t1 = time.time()
             args.batch_idx = i
             acc = train_target(args)
-            f = open(f'DomainNet126-continual_{args.src}_target-{args.name_tar}.txt', 'a')
+            f = open(f'DomainNet126_{args.src}_target-{args.name_tar}.txt', 'a')
             f.write(f'{str(acc)}\n')
             f.close()
             t2 = time.time()
