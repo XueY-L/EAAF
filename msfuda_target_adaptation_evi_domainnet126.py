@@ -1,5 +1,5 @@
 '''
-python msfuda_target_adaptation_evi_domainnet126.py --dset domainnet126 --gpu_id 0 --output_src ckps/source/ --output ckps/adapt --batch_size 50 --worker 0
+python msfuda_target_adaptation_evi_domainnet126.py --dset domainnet126 --gpu_id 0 --output_src ckps/source/ --output ckps/adapt --batch_size 17 --worker 0
 '''
 import argparse
 from concurrent.futures import thread
@@ -981,7 +981,7 @@ if __name__ == "__main__":
         args.output_dir_src.append(osp.join(args.output_src, args.dset, args.src[i]))
     print(args.output_dir_src)
     
-    for k in [0, 1]:
+    for k in [1]:
         args.t = k
         args.name_tar = names[args.t]
        
@@ -1012,7 +1012,7 @@ if __name__ == "__main__":
             t1 = time.time()
             args.batch_idx = i
             acc = train_target(args)
-            f = open(f'DomainNet126_{args.src}_target-{args.name_tar}.txt', 'a')
+            f = open(f'DomainNet126_{args.src}_target-{args.name_tar}_bs{args.batch_size}.txt', 'a')
             f.write(f'{str(acc)}\n')
             f.close()
             t2 = time.time()

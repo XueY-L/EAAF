@@ -164,7 +164,7 @@ def train_source_step1(args):
     if args.net[0:3] == 'res':
         mddn_F = network.ResBase(res_name=args.net, path=path).cuda()
     elif args.net[0:3] == 'vgg':
-        mddn_F = network.VGGBase(vgg_name=args.net).cuda()  
+        mddn_F = network.VGGBase(vgg_name=args.net).cuda()
 
     mddn_C1 = network.feat_bottleneck(type=args.bn, feature_dim=mddn_F.in_features, bottleneck_dim=args.bottleneck).cuda()
     mddn_C2 = network.feat_classifier(type=args.layer, class_num = args.class_num, bottleneck_dim=args.bottleneck).cuda()
