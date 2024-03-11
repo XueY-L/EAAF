@@ -1,4 +1,4 @@
-path = '/home/yxue/EAAF/results/domainnet126_bs50/DomainNet126_[\'clipart\', \'painting\']_target-sketch.txt'
+path = '/home/yxue/EAAF/results/domainnet_bs17/DomainNet126_[\'real\', \'sketch\']_target-clipart_bs17.txt'
 
 f = open(path, 'r')
 
