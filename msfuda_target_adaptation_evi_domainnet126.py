@@ -1,5 +1,5 @@
 '''
-python msfuda_target_adaptation_evi_domainnet126.py --dset domainnet126 --gpu_id 0 --output_src ckps/source/ --output ckps/adapt --batch_size 17 --worker 0
+python msfuda_target_adaptation_evi_domainnet126.py --dset domainnet126 --gpu_id 1 --output_src ckps/source/ --output ckps/adapt --batch_size 17 --worker 0
 '''
 import argparse
 from concurrent.futures import thread
@@ -975,7 +975,7 @@ if __name__ == "__main__":
 
     args.t_dset_path = '/home/yxue/datasets'
 
-    args.src = ['real', 'sketch']
+    args.src = ['painting', 'sketch']
     args.output_dir_src = []  # 源模型的位置
     for i in range(len(args.src)):
         args.output_dir_src.append(osp.join(args.output_src, args.dset, args.src[i]))
